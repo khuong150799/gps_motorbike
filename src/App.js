@@ -5,11 +5,13 @@ import {
   DirectionsRenderer,
   DirectionsService,
   GoogleMap,
+  InfoWindow,
   LoadScript,
+  Marker,
   Polyline,
 } from "@react-google-maps/api";
 import { useCallback, useEffect, useRef, useState } from "react";
-
+const places = ['places']
 function App() {
   const [height, setHeight] = useState("500px");
   const containerStyle = {
@@ -18,87 +20,135 @@ function App() {
     margin: "10px auto",
   };
 
-  const center = {
-    lat: -3.745,
-    lng: -38.523,
-  };
+  
   const originRef = useRef();
   const destinationRef = useRef();
   const wayRef = useRef();
+  const waypointsRef = useRef();
   const radioRef = useRef();
-  const intervalRef = useRef();
+  const pantoRef = useRef();
+  const [center, setCenter] = useState({
+    lat: 21.0278,
+    lng: 105.8342,
+  });
+  const [map, setMap] = useState("");
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
-  const [wayPoints, setWayPoints] = useState("");
+  const [wayPoints, setWayPoints] = useState([]);
   const [directionsResults, setDirectionsResults] = useState("");
   const [travelMode, setTravelMode] = useState("DRIVING");
   const [path, setPath] = useState([]);
-  const [index, setIndex] = useState(0);
-  const [steps, setSteps] = useState([]);
+  const [polylinePath, setPolylinePath] = useState([]);
+  const [steps, setSteps] = useState(0);
+  const [callbackDir, setCallbackDir] = useState(false);
 
   const [isReview, setIsReview] = useState(false);
+  const [position, setPosition] = useState([]);
+  const [positionMarker, setPositionMarker] = useState([]);
 
   const handelChange = (e) => {
     setTravelMode(e.target.value);
   };
   const calcRoute = () => {
-    console.log(wayRef);
+    // console.log(waypointsRef);
     setOrigin(originRef.current.value);
     setDestination(destinationRef.current.value);
-    const wayPoints = wayRef.current.value.split("-");
-    wayPoints.forEach((waypoint, i) => {
-      const location = { location: waypoint };
-      wayPoints[i] = location;
-    });
-    setWayPoints(wayPoints);
-  };
-  const directionsCallback = (response) => {
-    if (response !== null) {
-      if (response.status === "OK" && wayPoints.length < 0) {
-        const output = document.querySelector("#output");
-        output.innerHTML =
-          "<div class='alert-info'>From: " +
-          document.getElementById("from").value +
-          ".<br />To: " +
-          document.getElementById("to").value +
-          ".<br /> Driving distance <i class='fas fa-road'></i> : " +
-          response.routes[0].legs[0].distance.text +
-          ".<br />Duration <i class='fas fa-hourglass-start'></i> : " +
-          response.routes[0].legs[0].duration.text +
-          ".</div>";
-        setDirectionsResults(response);
-      }
-      if (response.status === "OK" && wayPoints.length >= 0) {
-        const route = response.routes[0];
-        const legs = route.legs;
-        let step_ = [];
-        legs.forEach(function (leg, i) {
-          leg.steps.forEach((step) => {
-            step_ = [...step_, step];
-          });
-        });
-        setSteps(step_);
-      }
+    console.log(waypointsRef);
+    if(waypointsRef.current){
+      const wayPoints_ = waypointsRef.current.value.split("-");
+      console.log(wayPoints_);
+      wayPoints_.forEach((waypoint, i) => {
+        const location = { location: waypoint };
+        wayPoints_[i] = location;
+      });
+      console.log(wayPoints_);
+      setWayPoints(wayPoints_);
     }
   };
-  const handelLoad = () => {};
-  useEffect(() => {
-    intervalRef.current = setInterval(function () {
-      if (index < steps.length) {
-        setPath(steps[index].path);
-        setIndex(index + 1);
-        console.log("index thứ: ", index);
-      } else {
-        clearInterval(intervalRef.current);
+  const directionsCallback = useCallback((response) => {
+    console.log(response);
+    console.log(callbackDir);
+    if (response !== null&& !callbackDir) {
+      setCallbackDir(true)
+      console.log(wayPoints.length);
+      if (response.status === "OK" && wayPoints.length <= 0 ) {
+        const output = document.querySelector("#output");
+        output.innerHTML =
+        "<div class='alert-info'>From: " +
+        document.getElementById("from").value +
+        ".<br />To: " +
+        document.getElementById("to").value +
+        ".<br /> Driving distance <i class='fas fa-road'></i> : " +
+        response.routes[0].legs[0].distance.text +
+        ".<br />Duration <i class='fas fa-hourglass-start'></i> : " +
+        response.routes[0].legs[0].duration.text +
+        ".</div>";
+        setDirectionsResults(response);
+        console.log(wayPoints.length);
       }
-    }, 500);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index]);
+      if (response.status === "OK" && wayPoints.length > 0) {
+        console.log(123);
+        const route = response.routes[0];
+        const legs = route.legs;
+        let path_ = [];
+        legs.forEach(function (leg, i) {
+          leg.steps.forEach((step) => {
+            path_ = [...path_, step];
+          });
+        });
+        let path__ = []
+        path_.forEach(path=>{
+          path__ = [...path__,...path.path]
+        })
+        setPath(path__)
+        // setPath(path_)
+      }
+    }
+  },[callbackDir,wayPoints]);
+  useEffect(()=>{
+    console.log(path);
+    
+    const interval = setInterval(()=>{
+      if(steps < path.length){
+        console.log(polylinePath);
+        setPolylinePath(prev=>[...prev,path[steps]])
+        pantoRef.current.panTo(polylinePath[steps])
+        console.log(steps);
+        setSteps(steps + 10)
+        
+      }else{
+        clearInterval(interval)
+      }
+    },50)
+    return () => clearInterval(interval)
+    },[polylinePath,path])
+  const handelLoad = (map) => {
+    // console.log(map);
+    if(map){
+      pantoRef.current = map
+    }
+  };
+  const handleDbClickGgMap = (e) => {
+   if(e.latLng){
+    setPosition(prev => [...prev,e.latLng])
+   }
+  };
+  const onLoadMarker = (marker)=>{
+    console.log(marker);
+  }
+  const handelClickMarket = (e)=>{
+    console.log(e);
+    setPositionMarker(prev => [...prev,e.latLng])
+  }
+  const onLoadInfo = (e)=>{
+    console.log(e);
+  }
   const optionPolyline = {
-    strokeColor: "#00FF00",
+    strokeColor: "#000000",
     strokeOpacity: 1.0,
     strokeWeight: 4,
   };
+ 
   const radioChange = (e) => {
     if (e.target.checked) {
       setIsReview(true);
@@ -109,14 +159,23 @@ function App() {
     }
   };
 
+ 
+   
+  const divStyle = {
+    background: `white`,
+    border: `1px solid #ccc`,
+    padding: 15
+  }
+  
+  //onLoad={handelLoad} onCenterChanged={handleCenterChanged}
   return (
     <>
       <LoadScript
         googleMapsApiKey="AIzaSyCjE5nAZ00uqL_EVFRNsUiueeMvk-tmT1c"
-        libraries={["places"]}
-        onLoad={handelLoad}
+        libraries={places}
+        
       >
-        <GoogleMap mapContainerStyle={containerStyle} center={center} zoom={10}>
+        <GoogleMap mapContainerStyle={containerStyle} center={center} zoom={10} onDblClick={handleDbClickGgMap} onLoad={handelLoad}  >
           <div className="jumbotron">
             <div className="container-fluid">
               <form className="form-horizontal">
@@ -195,9 +254,9 @@ function App() {
                     >
                       <Autocomplete>
                         <textarea
-                          ref={wayRef}
+                          ref={waypointsRef}
                           type="text"
-                          id="to"
+                          id="waypoints"
                           placeholder="Nhập các điểm đến trung gian"
                           className="form-control"
                         />
@@ -245,9 +304,31 @@ function App() {
           {directionsResults && (
             <DirectionsRenderer options={{ directions: directionsResults }} />
           )}
-          {path.length > 0 && origin !== "" && destination !== "" && (
-            <Polyline path={path} options={optionPolyline} />
-          )}
+          {polylinePath.length > 0 && origin !== "" && destination !== "" && (
+            
+            <Polyline  path={polylinePath} options={optionPolyline} />
+        ) 
+          }
+          {position.length > 0 && position.map((value,i)=>(
+            <Marker
+            key={i}
+            onLoad={onLoadMarker}
+            position={value}
+            onClick={handelClickMarket}
+          />
+          ))}
+          {positionMarker.length > 0 &&  
+         (positionMarker.map((value,i)=>(
+          <InfoWindow
+          key={i}
+          onLoad={onLoadInfo}
+          position={value}
+        >
+          <div style={divStyle}>
+           <h1>InfoWindow lat:{i} lng:{i} </h1>
+          </div>
+        </InfoWindow>
+         )))}
         </GoogleMap>
       </LoadScript>
       <div className="container-fluid">
